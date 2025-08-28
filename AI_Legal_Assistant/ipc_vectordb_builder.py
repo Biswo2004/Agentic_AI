@@ -1,60 +1,40 @@
 import json
-import os
-import sqlite3
-from langchain_huggingface import HuggingFaceEmbeddings
+import faiss
 import numpy as np
+from langchain_huggingface import HuggingFaceEmbeddings
 
-DB_PATH = "./ipc_vectordb.sqlite"
+INDEX_PATH = "./ipc_vectordb.faiss"
+METADATA_PATH = "./ipc_vectordb_meta.json"
 
-def load_ipc_data(file_path: str) -> list[dict]:
-    with open(file_path, "r", encoding="utf-8") as file:
-        return json.load(file)
+def load_ipc_data(file_path: str):
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def build_ipc_vectordb():
-    """
-    Build SQLite3 database for IPC sections with embeddings.
-    """
-    ipc_json_path = "./ipc.json"
-    ipc_data = load_ipc_data(ipc_json_path)
-
-    # Initialize embedding model
+    ipc_data = load_ipc_data("./ipc.json")
     embed_model = HuggingFaceEmbeddings()
 
-    # Create DB and table
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS ipc_sections (
-            id INTEGER PRIMARY KEY,
-            chapter TEXT,
-            chapter_title TEXT,
-            section TEXT,
-            section_title TEXT,
-            section_desc TEXT,
-            embedding BLOB
-        )
-    """)
-    conn.commit()
+    embeddings = []
+    metadata = []
 
-    # Insert IPC entries with embeddings
     for entry in ipc_data:
         content = f"Section {entry['Section']}: {entry['section_title']}\n\n{entry['section_desc']}"
-        embedding = embed_model.embed_query(content)
-        embedding_blob = np.array(embedding, dtype=np.float32).tobytes()
+        emb = np.array(embed_model.embed_query(content), dtype=np.float32)
+        embeddings.append(emb)
+        metadata.append({
+            "chapter": entry["chapter"],
+            "chapter_title": entry["chapter_title"],
+            "section": entry["Section"],
+            "section_title": entry["section_title"],
+            "content": entry["section_desc"]
+        })
 
-        c.execute("""
-            INSERT INTO ipc_sections 
-            (chapter, chapter_title, section, section_title, section_desc, embedding)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            entry["chapter"], entry["chapter_title"],
-            entry["Section"], entry["section_title"],
-            entry["section_desc"], embedding_blob
-        ))
+    embeddings = np.vstack(embeddings)
+    index = faiss.IndexFlatL2(embeddings.shape[1])
+    index.add(embeddings)
+    faiss.write_index(index, INDEX_PATH)
 
-    conn.commit()
-    conn.close()
-    print(f"✅ SQLite IPC Vector DB built at '{DB_PATH}'")
+    with open(METADATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(metadata, f)
 
-if __name__ == "__main__":
-    build_ipc_vectordb()
+    print("✅ FAISS IPC Vector DB built successfully.")
