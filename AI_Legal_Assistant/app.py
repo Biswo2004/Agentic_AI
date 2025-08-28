@@ -1,52 +1,20 @@
+# app.py
+
 import streamlit as st
-import os
 from dotenv import load_dotenv
 from crew import legal_assistant_crew
-from ipc_vectordb_builder import build_ipc_vectordb
-import faiss
-import json
-import numpy as np
-from langchain_huggingface import HuggingFaceEmbeddings
 
-# Load environment variables (local fallback)
+# Load environment variables
 load_dotenv()
 
 # Streamlit page setup
 st.set_page_config(page_title="AI Legal Assistant", page_icon="⚖️", layout="wide")
 
 # ------------------------------
-# IPC FAISS DB rebuild if missing
-# ------------------------------
-INDEX_PATH = "./ipc_vectordb.faiss"
-METADATA_PATH = "./ipc_vectordb_meta.json"
-
-if not os.path.exists(INDEX_PATH) or not os.path.exists(METADATA_PATH):
-    with st.spinner("⚡ Building IPC FAISS DB..."):
-        try:
-            build_ipc_vectordb()  # builds FAISS index and metadata
-            st.success("✅ IPC FAISS DB built successfully!")
-        except Exception as e:
-            st.error(f"❌ Failed to build IPC FAISS DB: {e}")
-            st.stop()
-
-# Verify FAISS index and metadata
-try:
-    index = faiss.read_index(INDEX_PATH)
-    with open(METADATA_PATH, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-except Exception as e:
-    st.error(f"❌ IPC FAISS DB is not accessible: {e}")
-    st.stop()
-
-# ------------------------------
 # Session state for API key validation
 # ------------------------------
 if "api_keys_valid" not in st.session_state:
     st.session_state.api_keys_valid = False
-if "groq_api_key" not in st.session_state:
-    st.session_state.groq_api_key = ""
-if "tavily_api_key" not in st.session_state:
-    st.session_state.tavily_api_key = ""
 
 # Sidebar: API key inputs
 st.sidebar.title("🔑 API Key Validation")
@@ -61,7 +29,13 @@ def validate_keys():
         st.session_state.api_keys_valid = False
         st.sidebar.error("❌ Invalid API Keys. Please check both keys.")
 
-st.sidebar.text_input(
+# Text inputs in sidebar tied to session state
+if "groq_api_key" not in st.session_state:
+    st.session_state.groq_api_key = ""
+if "tavily_api_key" not in st.session_state:
+    st.session_state.tavily_api_key = ""
+
+groq_api_key_input = st.sidebar.text_input(
     "Enter your Groq API Key",
     type="password",
     key="groq_api_key",
@@ -69,7 +43,7 @@ st.sidebar.text_input(
     help="Your Groq API key should start with 'gsk_'"
 )
 
-st.sidebar.text_input(
+tavily_api_key_input = st.sidebar.text_input(
     "Enter your Tavily API Key",
     type="password",
     key="tavily_api_key",
@@ -78,25 +52,10 @@ st.sidebar.text_input(
 )
 
 # ------------------------------
-# IPC FAISS Search Tool
-# ------------------------------
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-def search_ipc_sections(query: str, top_k: int = 3):
-    embed_model = HuggingFaceEmbeddings()
-    query_embedding = np.array(embed_model.embed_query(query), dtype=np.float32).reshape(1, -1)
-
-    distances, indices = index.search(query_embedding, top_k)
-    results = []
-    for i in indices[0]:
-        results.append(metadata[i])
-    return results
-
-# ------------------------------
 # Main app screen (only if API keys are valid)
 # ------------------------------
 if st.session_state.api_keys_valid:
+    # ✅ Green banner showing API keys are validated
     st.success("🎉 API Keys validated successfully! You can now use the AI Legal Assistant.")
 
     st.title("⚖️ Personal AI Legal Assistant")
@@ -108,6 +67,7 @@ if st.session_state.api_keys_valid:
         "- Generate a formal legal complaint document"
     )
 
+    # Form input
     with st.form("legal_form"):
         user_name = st.text_input("Your Full Name")
         incident_date = st.date_input("Date of Incident")
@@ -118,13 +78,17 @@ if st.session_state.api_keys_valid:
         phone_number = st.text_input("Phone Number")
         email = st.text_input("Email Address")
         user_input = st.text_area("Describe the Incident in Detail")
+
         submitted = st.form_submit_button("🔍 Run Legal Assistant")
 
+    # Run workflow if submitted
     if submitted:
         if not user_input.strip():
             st.warning("⚠️ Please enter your incident details to analyze.")
         else:
             with st.spinner("🔎 Analyzing your case and preparing legal output..."):
+
+                # Prepare all user details
                 inputs_dict = {
                     "user_name": user_name,
                     "incident_date": str(incident_date),
@@ -138,18 +102,18 @@ if st.session_state.api_keys_valid:
                     "groq_api_key": st.session_state.groq_api_key,
                     "tavily_api_key": st.session_state.tavily_api_key,
                 }
-                try:
-                    result = legal_assistant_crew.kickoff(inputs=inputs_dict)
-                except Exception as e:
-                    st.error(f"⚠️ Error running the Legal Assistant: {e}")
-                    st.stop()
+
+                # Kickoff the crew with all inputs
+                result = legal_assistant_crew.kickoff(inputs=inputs_dict)
 
             st.success("✅ Legal Assistant completed the workflow!")
 
+            # Display the final output
             st.subheader("📄 Final Legal Complaint")
             if isinstance(result, str):
                 st.markdown(result)
             else:
                 st.json(result)
+
 else:
     st.warning("Enter valid Groq and Tavily API keys in the sidebar to access the assistant.")
