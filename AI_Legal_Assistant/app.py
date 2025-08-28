@@ -1,14 +1,23 @@
-# app.py
-
 import streamlit as st
+import os
 from dotenv import load_dotenv
 from crew import legal_assistant_crew
+from ipc_vectordb_builder import build_ipc_vectordb
 
-# Load environment variables
+# Load environment variables (for local development fallback)
 load_dotenv()
 
 # Streamlit page setup
 st.set_page_config(page_title="AI Legal Assistant", page_icon="⚖️", layout="wide")
+
+# ------------------------------
+# IPC Vector DB rebuild if missing
+# ------------------------------
+VECTOR_DB_PATH = "./chroma_vectordb"
+if not os.path.exists(VECTOR_DB_PATH):
+    with st.spinner("⚡ Building IPC Vector DB..."):
+        build_ipc_vectordb()
+        st.success("✅ IPC Vector DB built successfully!")
 
 # ------------------------------
 # Session state for API key validation
@@ -55,7 +64,6 @@ tavily_api_key_input = st.sidebar.text_input(
 # Main app screen (only if API keys are valid)
 # ------------------------------
 if st.session_state.api_keys_valid:
-    # ✅ Green banner showing API keys are validated
     st.success("🎉 API Keys validated successfully! You can now use the AI Legal Assistant.")
 
     st.title("⚖️ Personal AI Legal Assistant")
@@ -87,7 +95,6 @@ if st.session_state.api_keys_valid:
             st.warning("⚠️ Please enter your incident details to analyze.")
         else:
             with st.spinner("🔎 Analyzing your case and preparing legal output..."):
-
                 # Prepare all user details
                 inputs_dict = {
                     "user_name": user_name,
