@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from crew import legal_assistant_crew
 from ipc_vectordb_builder import build_ipc_vectordb
 
-# Load environment variables (for local development fallback)
+# Load environment variables (local fallback)
 load_dotenv()
 
 # Streamlit page setup
@@ -16,14 +16,22 @@ st.set_page_config(page_title="AI Legal Assistant", page_icon="⚖️", layout="
 VECTOR_DB_PATH = "./chroma_vectordb"
 if not os.path.exists(VECTOR_DB_PATH):
     with st.spinner("⚡ Building IPC Vector DB..."):
-        build_ipc_vectordb()
-        st.success("✅ IPC Vector DB built successfully!")
+        try:
+            build_ipc_vectordb()
+            st.success("✅ IPC Vector DB built successfully!")
+        except Exception as e:
+            st.error(f"❌ Failed to build IPC Vector DB: {e}")
+            st.stop()
 
 # ------------------------------
 # Session state for API key validation
 # ------------------------------
 if "api_keys_valid" not in st.session_state:
     st.session_state.api_keys_valid = False
+if "groq_api_key" not in st.session_state:
+    st.session_state.groq_api_key = ""
+if "tavily_api_key" not in st.session_state:
+    st.session_state.tavily_api_key = ""
 
 # Sidebar: API key inputs
 st.sidebar.title("🔑 API Key Validation")
@@ -38,13 +46,7 @@ def validate_keys():
         st.session_state.api_keys_valid = False
         st.sidebar.error("❌ Invalid API Keys. Please check both keys.")
 
-# Text inputs in sidebar tied to session state
-if "groq_api_key" not in st.session_state:
-    st.session_state.groq_api_key = ""
-if "tavily_api_key" not in st.session_state:
-    st.session_state.tavily_api_key = ""
-
-groq_api_key_input = st.sidebar.text_input(
+st.sidebar.text_input(
     "Enter your Groq API Key",
     type="password",
     key="groq_api_key",
@@ -52,7 +54,7 @@ groq_api_key_input = st.sidebar.text_input(
     help="Your Groq API key should start with 'gsk_'"
 )
 
-tavily_api_key_input = st.sidebar.text_input(
+st.sidebar.text_input(
     "Enter your Tavily API Key",
     type="password",
     key="tavily_api_key",
@@ -75,7 +77,6 @@ if st.session_state.api_keys_valid:
         "- Generate a formal legal complaint document"
     )
 
-    # Form input
     with st.form("legal_form"):
         user_name = st.text_input("Your Full Name")
         incident_date = st.date_input("Date of Incident")
@@ -86,16 +87,13 @@ if st.session_state.api_keys_valid:
         phone_number = st.text_input("Phone Number")
         email = st.text_input("Email Address")
         user_input = st.text_area("Describe the Incident in Detail")
-
         submitted = st.form_submit_button("🔍 Run Legal Assistant")
 
-    # Run workflow if submitted
     if submitted:
         if not user_input.strip():
             st.warning("⚠️ Please enter your incident details to analyze.")
         else:
             with st.spinner("🔎 Analyzing your case and preparing legal output..."):
-                # Prepare all user details
                 inputs_dict = {
                     "user_name": user_name,
                     "incident_date": str(incident_date),
@@ -109,18 +107,18 @@ if st.session_state.api_keys_valid:
                     "groq_api_key": st.session_state.groq_api_key,
                     "tavily_api_key": st.session_state.tavily_api_key,
                 }
-
-                # Kickoff the crew with all inputs
-                result = legal_assistant_crew.kickoff(inputs=inputs_dict)
+                try:
+                    result = legal_assistant_crew.kickoff(inputs=inputs_dict)
+                except Exception as e:
+                    st.error(f"⚠️ Error running the Legal Assistant: {e}")
+                    st.stop()
 
             st.success("✅ Legal Assistant completed the workflow!")
 
-            # Display the final output
             st.subheader("📄 Final Legal Complaint")
             if isinstance(result, str):
                 st.markdown(result)
             else:
                 st.json(result)
-
 else:
     st.warning("Enter valid Groq and Tavily API keys in the sidebar to access the assistant.")
