@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from crew import legal_assistant_crew
 from ipc_vectordb_builder import build_ipc_vectordb
+import sqlite3
 
 # Load environment variables (local fallback)
 load_dotenv()
@@ -11,17 +12,26 @@ load_dotenv()
 st.set_page_config(page_title="AI Legal Assistant", page_icon="⚖️", layout="wide")
 
 # ------------------------------
-# IPC Vector DB rebuild if missing
+# IPC SQLite DB rebuild if missing
 # ------------------------------
-VECTOR_DB_PATH = "./chroma_vectordb"
+VECTOR_DB_PATH = "./ipc_vectordb.sqlite"
 if not os.path.exists(VECTOR_DB_PATH):
-    with st.spinner("⚡ Building IPC Vector DB..."):
+    with st.spinner("⚡ Building IPC SQLite DB..."):
         try:
-            build_ipc_vectordb()
-            st.success("✅ IPC Vector DB built successfully!")
+            build_ipc_vectordb()  # builds ipc_vectordb.sqlite
+            st.success("✅ IPC SQLite DB built successfully!")
         except Exception as e:
-            st.error(f"❌ Failed to build IPC Vector DB: {e}")
+            st.error(f"❌ Failed to build IPC DB: {e}")
             st.stop()
+
+# Verify DB is accessible
+try:
+    conn = sqlite3.connect(VECTOR_DB_PATH)
+    conn.execute("SELECT 1")
+    conn.close()
+except Exception as e:
+    st.error(f"❌ IPC DB is not accessible: {e}")
+    st.stop()
 
 # ------------------------------
 # Session state for API key validation
