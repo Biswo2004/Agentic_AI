@@ -1,38 +1,27 @@
-from crewai.tools import tool
-import sqlite3
+import json
+import faiss
 import numpy as np
+from crewai.tools import tool
 from langchain_huggingface import HuggingFaceEmbeddings
 
-DB_PATH = "./ipc_vectordb.sqlite"
+INDEX_PATH = "./ipc_vectordb.faiss"
+METADATA_PATH = "./ipc_vectordb_meta.json"
 
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 @tool("IPC Sections Search Tool")
-def search_ipc_sections(query: str, top_k: int = 3) -> list[dict]:
+def search_ipc_sections(query: str, top_k: int = 3):
     embed_model = HuggingFaceEmbeddings()
-    query_embedding = np.array(embed_model.embed_query(query), dtype=np.float32)
+    query_embedding = np.array(embed_model.embed_query(query), dtype=np.float32).reshape(1, -1)
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT chapter, chapter_title, section, section_title, section_desc, embedding FROM ipc_sections")
-    rows = c.fetchall()
-    conn.close()
+    index = faiss.read_index(INDEX_PATH)
+    with open(METADATA_PATH, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
 
+    distances, indices = index.search(query_embedding, top_k)
     results = []
-    for row in rows:
-        chapter, chapter_title, section, section_title, section_desc, embedding_blob = row
-        embedding = np.frombuffer(embedding_blob, dtype=np.float32)
-        score = cosine_similarity(query_embedding, embedding)
-        results.append({
-            "chapter": chapter,
-            "chapter_title": chapter_title,
-            "section": section,
-            "section_title": section_title,
-            "content": section_desc,
-            "score": score
-        })
+    for i in indices[0]:
+        results.append(metadata[i])
 
-    # Sort by similarity
-    results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:top_k]
+    return results
