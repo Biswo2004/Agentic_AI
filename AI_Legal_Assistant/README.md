@@ -39,3 +39,36 @@ This demo showcases the multi-agent workflow, IPC section search, legal preceden
    ```bash
    git clone https://github.com/Biswo2004/Agentic_AI.git
    cd Agentic_AI/AI_Legal_Assistant
+
+---
+2. **🛠️ Create & Activate a Virtual Environment**
+
+   To ensure all dependencies are installed in an isolated environment, follow these steps:
+   ```bash
+   - windows:
+   python -m venv venv
+   - macos/linux: 
+   source venv/bin/activate
+
+---
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+
+---
+4. **Set Up Environment Variables**
+   Create a .env file in the project root and add:
+    ```bash
+    GROQ_API_KEY=your_groq_api_key
+    TAVILY_API_KEY=your_tavily_api_key
+
+---
+**🚀 Running the Streamlit App**
+   ```bash
+       streamlit run app.py
+
+
+
+
+
+
