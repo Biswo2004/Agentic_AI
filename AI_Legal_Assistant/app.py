@@ -3,7 +3,10 @@ import os
 from dotenv import load_dotenv
 from crew import legal_assistant_crew
 from ipc_vectordb_builder import build_ipc_vectordb
-import sqlite3
+import faiss
+import json
+import numpy as np
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load environment variables (local fallback)
 load_dotenv()
@@ -12,25 +15,27 @@ load_dotenv()
 st.set_page_config(page_title="AI Legal Assistant", page_icon="⚖️", layout="wide")
 
 # ------------------------------
-# IPC SQLite DB rebuild if missing
+# IPC FAISS DB rebuild if missing
 # ------------------------------
-VECTOR_DB_PATH = "./ipc_vectordb.sqlite"
-if not os.path.exists(VECTOR_DB_PATH):
-    with st.spinner("⚡ Building IPC SQLite DB..."):
+INDEX_PATH = "./ipc_vectordb.faiss"
+METADATA_PATH = "./ipc_vectordb_meta.json"
+
+if not os.path.exists(INDEX_PATH) or not os.path.exists(METADATA_PATH):
+    with st.spinner("⚡ Building IPC FAISS DB..."):
         try:
-            build_ipc_vectordb()  # builds ipc_vectordb.sqlite
-            st.success("✅ IPC SQLite DB built successfully!")
+            build_ipc_vectordb()  # builds FAISS index and metadata
+            st.success("✅ IPC FAISS DB built successfully!")
         except Exception as e:
-            st.error(f"❌ Failed to build IPC DB: {e}")
+            st.error(f"❌ Failed to build IPC FAISS DB: {e}")
             st.stop()
 
-# Verify DB is accessible
+# Verify FAISS index and metadata
 try:
-    conn = sqlite3.connect(VECTOR_DB_PATH)
-    conn.execute("SELECT 1")
-    conn.close()
+    index = faiss.read_index(INDEX_PATH)
+    with open(METADATA_PATH, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
 except Exception as e:
-    st.error(f"❌ IPC DB is not accessible: {e}")
+    st.error(f"❌ IPC FAISS DB is not accessible: {e}")
     st.stop()
 
 # ------------------------------
@@ -71,6 +76,22 @@ st.sidebar.text_input(
     on_change=validate_keys,
     help="Your Tavily API key should start with 'tvly'"
 )
+
+# ------------------------------
+# IPC FAISS Search Tool
+# ------------------------------
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def search_ipc_sections(query: str, top_k: int = 3):
+    embed_model = HuggingFaceEmbeddings()
+    query_embedding = np.array(embed_model.embed_query(query), dtype=np.float32).reshape(1, -1)
+
+    distances, indices = index.search(query_embedding, top_k)
+    results = []
+    for i in indices[0]:
+        results.append(metadata[i])
+    return results
 
 # ------------------------------
 # Main app screen (only if API keys are valid)
