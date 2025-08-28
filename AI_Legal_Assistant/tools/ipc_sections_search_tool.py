@@ -1,27 +1,66 @@
-import json
-import faiss
-import numpy as np
+# ipc_sections_search_tool.py
+
+import os
+
+from dotenv import load_dotenv
 from crewai.tools import tool
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-INDEX_PATH = "./ipc_vectordb.faiss"
-METADATA_PATH = "./ipc_vectordb_meta.json"
-
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 @tool("IPC Sections Search Tool")
-def search_ipc_sections(query: str, top_k: int = 3):
-    embed_model = HuggingFaceEmbeddings()
-    query_embedding = np.array(embed_model.embed_query(query), dtype=np.float32).reshape(1, -1)
+def search_ipc_sections(query: str) -> list[dict]:
+    """
+    Search IPC vector database for sections relevant to the input query.
 
-    index = faiss.read_index(INDEX_PATH)
-    with open(METADATA_PATH, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
+    Args:
+        query (str): User query in natural language.
 
-    distances, indices = index.search(query_embedding, top_k)
-    results = []
-    for i in indices[0]:
-        results.append(metadata[i])
+    Returns:
+        list[dict]: List of matching IPC sections with metadata and content.
+    """
+    # Load environment variables
+    load_dotenv()
 
-    return results
+    # Resolve vector DB path
+    persist_dir = os.getenv("PERSIST_DIRECTORY_PATH")
+    if not persist_dir:
+        raise EnvironmentError("❌ 'PERSIST_DIRECTORY_PATH' is not set in .env")
+
+    persist_dir_path = os.getenv("PERSIST_DIRECTORY_PATH")
+    collection_name = os.getenv("IPC_COLLECTION_NAME")
+
+    embedding_function = HuggingFaceEmbeddings()
+
+    # Load vectorstore
+    vector_db = Chroma(
+        collection_name=collection_name,
+        persist_directory=persist_dir_path,
+        embedding_function=embedding_function
+    )
+
+    top_k = 3 # can be passed as an argument for flexibility
+
+    # Perform similarity search
+    docs = vector_db.similarity_search(query, k=top_k)
+
+    # Format results
+    return [
+        {
+            "section": doc.metadata.get("section"),
+            "section_title": doc.metadata.get("section_title"),
+            "chapter": doc.metadata.get("chapter"),
+            "chapter_title": doc.metadata.get("chapter_title"),
+            "content": doc.page_content
+        }
+        for doc in docs
+    ]
+
+
+# Example usage of the IPC Section Search Tool - uncomment for testing the tool functionality
+# query = "What is the IPC section for Theft?"
+# results = search_ipc_sections.func(query)
+# for r in results:
+#     print(r)
+
+# NOTE: Retrieval is a bit slower. Can be improved by caching the vectordb and using GPU for embedding.
