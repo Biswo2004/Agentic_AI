@@ -1,47 +1,63 @@
 import os
 from crewai.tools import tool
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from tavily import TavilyClient
 
-# Default relative paths
-PERSIST_DIRECTORY_PATH = "./chroma_vectordb"
-IPC_COLLECTION_NAME = "ipc_collection"
+# 🔧 Trusted Indian legal domains — you can add more here anytime
+LEGAL_SOURCES = [
+    "indiankanoon.org"
+]
 
+def _is_legal_source(url: str) -> bool:
+    """Check if a URL belongs to one of the trusted legal domains."""
+    return any(domain in url for domain in LEGAL_SOURCES)
 
-@tool("IPC Sections Search Tool")
-def search_ipc_sections(query: str) -> list[dict]:
+@tool("Legal Precedent Search Tool")
+def search_legal_precedents(query: str) -> list[dict]:
     """
-    Search IPC vector database for sections relevant to the input query.
+    Use Tavily Search to find precedent legal cases for a given legal issue.
+    Sample tool input: "Home trespassing and theft - precedent cases in India"
+
     Args:
-        query (str): User query in natural language.
+        query (str): The structured legal issue or case summary.
+
     Returns:
-        list[dict]: List of matching IPC sections with metadata and content.
+        list[dict]: Relevant case titles, summaries, and links from trusted Indian legal sources.
     """
-    if not os.path.exists(PERSIST_DIRECTORY_PATH):
-        raise FileNotFoundError(f"❌ Vector DB not found at {PERSIST_DIRECTORY_PATH}. Please run ipc_vectordb_builder.py first.")
+    # Use environment variable or Streamlit secrets
+    api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        raise ValueError("❌ 'TAVILY_API_KEY' not found in environment. "
+                         "Add it in Streamlit secrets or .env file.")
 
-    embedding_function = HuggingFaceEmbeddings()
+    client = TavilyClient(api_key=api_key)
 
-    # Load vectorstore
-    vector_db = Chroma(
-        collection_name=IPC_COLLECTION_NAME,
-        persist_directory=PERSIST_DIRECTORY_PATH,
-        embedding_function=embedding_function
+    # 🔍 Restrict search to only trusted legal domains
+    search_query = f"site:{' OR site:'.join(LEGAL_SOURCES)} {query}"
+
+    response = client.search(
+        query=search_query,
+        max_results=10
     )
 
-    top_k = 3  # can be made dynamic
-
-    # Perform similarity search
-    docs = vector_db.similarity_search(query, k=top_k)
-
-    # Format results
-    return [
+    raw_results = response.get("results", [])
+    legal_results = [
         {
-            "section": doc.metadata.get("section"),
-            "section_title": doc.metadata.get("section_title"),
-            "chapter": doc.metadata.get("chapter"),
-            "chapter_title": doc.metadata.get("chapter_title"),
-            "content": doc.page_content
+            "title": item.get("title"),
+            "summary": item.get("content"),
+            "link": item.get("url")
         }
-        for doc in docs
+        for item in raw_results
+        if _is_legal_source(item.get("url", ""))
     ]
+
+    return legal_results if legal_results else [{
+        "title": "No relevant legal precedents found",
+        "summary": "No matching results found from trusted Indian legal sources.",
+        "link": None
+    }]
+
+# Example usage (uncomment to test locally)
+# query = "Home trespassing and theft - precedent cases in India"
+# results = search_legal_precedents.func(query)
+# for r in results:
+#     print(r)
