@@ -110,7 +110,7 @@ This demo showcases the multi-agent workflow, IPC section search, legal preceden
   
 ---
 **📝 Credits:**
-Developed by Biswojit Bal · Powered by Crew AI, Streamlit, FAISS, LangChain, HuggingFace, Tavily API
+Developed by Biswojit Bal · Powered by Crew AI, Streamlit, chromadb, LangChain, HuggingFace, Tavily API
 
 
 
