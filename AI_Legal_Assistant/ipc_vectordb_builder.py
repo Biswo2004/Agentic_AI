@@ -1,56 +1,60 @@
-# ipc_vectordb_builder.py
-
 import json
 import os
-from langchain_community.docstore.document import Document
-from langchain_chroma import Chroma
+import sqlite3
 from langchain_huggingface import HuggingFaceEmbeddings
+import numpy as np
 
+DB_PATH = "./ipc_vectordb.sqlite"
 
 def load_ipc_data(file_path: str) -> list[dict]:
     with open(file_path, "r", encoding="utf-8") as file:
         return json.load(file)
 
-
-def prepare_documents(ipc_data: list[dict]) -> list[Document]:
-    return [
-        Document(
-            page_content=f"Section {entry['Section']}: {entry['section_title']}\n\n{entry['section_desc']}",
-            metadata={
-                "chapter": entry["chapter"],
-                "chapter_title": entry["chapter_title"],
-                "section": entry["Section"],
-                "section_title": entry["section_title"]
-            }
-        )
-        for entry in ipc_data
-    ]
-
-
 def build_ipc_vectordb():
     """
-    Build and persist a Chroma vectorstore for IPC sections.
-    Automatically uses relative paths suitable for Streamlit Cloud.
+    Build SQLite3 database for IPC sections with embeddings.
     """
-    ipc_json_path = "./ipc.json"                # relative path
-    persist_dir_path = "./chroma_vectordb"     # folder will be created
-    collection_name = "ipc_collection"
-
-    # Load and process data
+    ipc_json_path = "./ipc.json"
     ipc_data = load_ipc_data(ipc_json_path)
-    documents = prepare_documents(ipc_data)
 
-    # Initialize embeddings and vectorstore
-    embeddings = HuggingFaceEmbeddings()
-    Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        persist_directory=persist_dir_path,
-        collection_name=collection_name
-    )
+    # Initialize embedding model
+    embed_model = HuggingFaceEmbeddings()
 
-    print(f"✅ Vectorstore successfully created at '{persist_dir_path}'")
+    # Create DB and table
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS ipc_sections (
+            id INTEGER PRIMARY KEY,
+            chapter TEXT,
+            chapter_title TEXT,
+            section TEXT,
+            section_title TEXT,
+            section_desc TEXT,
+            embedding BLOB
+        )
+    """)
+    conn.commit()
 
+    # Insert IPC entries with embeddings
+    for entry in ipc_data:
+        content = f"Section {entry['Section']}: {entry['section_title']}\n\n{entry['section_desc']}"
+        embedding = embed_model.embed_query(content)
+        embedding_blob = np.array(embedding, dtype=np.float32).tobytes()
+
+        c.execute("""
+            INSERT INTO ipc_sections 
+            (chapter, chapter_title, section, section_title, section_desc, embedding)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            entry["chapter"], entry["chapter_title"],
+            entry["Section"], entry["section_title"],
+            entry["section_desc"], embedding_blob
+        ))
+
+    conn.commit()
+    conn.close()
+    print(f"✅ SQLite IPC Vector DB built at '{DB_PATH}'")
 
 if __name__ == "__main__":
     build_ipc_vectordb()
