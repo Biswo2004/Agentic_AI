@@ -1,0 +1,8 @@
+crewai
+crewai_tools
+python-dotenv
+langchain-huggingface
+youtube-transcript-api
+yt_dlp
+google-api-python-client
+streamlit
