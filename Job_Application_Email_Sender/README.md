@@ -27,7 +27,7 @@ A professional AI-powered Streamlit application that automatically generates per
 
 ## 📋 Prerequisites
 
-Before running the application, ensure you have:
+Before running the application, ensure you have these:
 
 1. **Python 3.8+** installed
 2. **OpenAI API Key** - Get from [OpenAI Platform](https://platform.openai.com/api-keys)
